@@ -55,7 +55,7 @@ function execute(data: UserInputProps): Promise<string> {
         const columns = firstLine.split(seperator);
         for (let i = 0; i < columns.length; i++) {
           const columnName = columns[i];
-          table.columns.add(columnName + '-' + i, mssql.VarChar(200), {
+          table.columns.add(columnName.trim() + '-' + i, mssql.VarChar(200), {
             nullable: true,
           });
         }
