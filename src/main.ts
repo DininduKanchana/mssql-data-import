@@ -52,11 +52,10 @@ function execute(data: UserInputProps): Promise<string> {
 
       // adding the coulmns to table
       if (firstLineColumns.toLocaleLowerCase() === 'y') {
-        console.log('not handled yet');
         const columns = firstLine.split(seperator);
         for (let i = 0; i < columns.length; i++) {
           const columnName = columns[i];
-          table.columns.add(columnName, mssql.VarChar(200), {
+          table.columns.add(columnName + '-' + i, mssql.VarChar(200), {
             nullable: true,
           });
         }
