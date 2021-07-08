@@ -17,7 +17,7 @@ const sqlConfig = {
   pool: {
     max: 10,
     min: 0,
-    idleTimeoutMillis: 30000,
+    idleTimeoutMillis: 10000,
   },
   options: {
     trustServerCertificate: true, // change to true for local dev / self-signed certs
@@ -40,6 +40,7 @@ function execute(data: UserInputProps): Promise<string> {
     }
     try {
       const seperator = sep || '|';
+      // fileName = path.resolve(fileName);
       const table = new Table(tableName);
       table.create = true;
 
@@ -49,6 +50,13 @@ function execute(data: UserInputProps): Promise<string> {
       // adding the coulmns to table
       if (firstLineColumns.toLocaleLowerCase() === 'y') {
         console.log('not handled yet');
+        const columns = firstLine.split(seperator);
+        for (let i = 0; i < columns.length; i++) {
+          const columnName = columns[i];
+          table.columns.add(columnName, mssql.VarChar(200), {
+            nullable: true,
+          });
+        }
       } else {
         const columnCount = firstLine.split(seperator).length;
         for (let i = 0; i < columnCount; i++) {
@@ -70,23 +78,29 @@ function execute(data: UserInputProps): Promise<string> {
 
       lineStream.on('data', async function (data) {
         const values = data.split(seperator);
+        if (values.length > 1) {
+          try {
+            count = count + 1;
 
-        try {
-          count = count + 1;
-          table.rows.add(...values);
-          if (count % 10000 === 0) {
-            lineStream.pause();
+            if (firstLineColumns.toLocaleLowerCase() === 'y' && count === 1) {
+              // skip the first line in the file
+              return;
+            }
+            table.rows.add(...values);
+            if (count % 10000 === 0) {
+              lineStream.pause();
 
-            const request = pool.request();
-            const results = await request.bulk(table);
-            table.rows.splice(0, table.rows.length);
+              const request = pool.request();
+              const results = await request.bulk(table);
+              table.rows.splice(0, table.rows.length);
 
-            lineStream.resume();
-            console.log(`rows affected ${results.rowsAffected}`);
+              lineStream.resume();
+              console.log(`rows affected ${results.rowsAffected}`);
+            }
+
+          } catch (error) {
+            console.log(error);
           }
-
-        } catch (error) {
-          console.log(error);
         }
       });
 
