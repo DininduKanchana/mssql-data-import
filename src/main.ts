@@ -6,14 +6,17 @@ import * as fs from 'fs';
 import * as split from 'split';
 import * as prompt from 'prompt';
 import * as firstline from 'firstline';
+import * as dotenv from 'dotenv';
 
 import { Table } from 'mssql';
 
+dotenv.config();
+
 const sqlConfig = {
-  user: 'sa',
-  password: 'Home89543',
-  database: 'TestDB',
-  server: 'localhost',
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_DATABASE,
+  server: process.env.DB_SERVER,
   pool: {
     max: 10,
     min: 0,
