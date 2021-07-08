@@ -1,32 +1,136 @@
-/**
- * Some predefined delay values (in milliseconds).
- */
-export enum Delays {
-  Short = 500,
-  Medium = 2000,
-  Long = 5000,
+/* eslint-disable @typescript-eslint/no-var-requires */
+// import mssql from 'mssql';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+import * as mssql from 'mssql';
+import * as fs from 'fs';
+import * as split from 'split';
+import * as prompt from 'prompt';
+import * as firstline from 'firstline';
+
+import { Table } from 'mssql';
+
+const sqlConfig = {
+  user: 'sa',
+  password: 'Home89543',
+  database: 'TestDB',
+  server: 'localhost',
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000,
+  },
+  options: {
+    trustServerCertificate: true, // change to true for local dev / self-signed certs
+  },
+};
+
+type UserInputProps = {
+  fileName: string,
+  tableName: string,
+  seperator: string,
+  firstLineColumns: string
 }
 
-/**
- * Returns a Promise<string> that resolves after a given time.
- *
- * @param {string} name - A name.
- * @param {number=} [delay=Delays.Medium] - A number of milliseconds to delay resolution of the Promise.
- * @returns {Promise<string>}
- */
-function delayedHello(
-  name: string,
-  delay: number = Delays.Medium,
-): Promise<string> {
-  return new Promise((resolve: (value?: string) => void) =>
-    setTimeout(() => resolve(`Hello, ${name}`), delay),
-  );
+function execute(data: UserInputProps): Promise<string> {
+  const { fileName, tableName, seperator: sep, firstLineColumns } = data
+  // eslint-disable-next-line no-async-promise-executor
+  return new Promise(async (resolve: (value?: string) => void) => {
+    if (!(fileName && tableName)) {
+      resolve('missing inputs');
+    }
+    try {
+      const seperator = sep || '|';
+      const table = new Table(tableName);
+      table.create = true;
+
+      // read first line to get column details
+      const firstLine = await firstline(fileName);
+
+      // adding the coulmns to table
+      if (firstLineColumns.toLocaleLowerCase() === 'y') {
+        console.log('not handled yet');
+      } else {
+        const columnCount = firstLine.split(seperator).length;
+        for (let i = 0; i < columnCount; i++) {
+          table.columns.add('column-' + i.toString(), mssql.VarChar(200), {
+            nullable: true,
+          });
+        }
+      };
+
+      // stablish connection
+      const pool = new mssql.ConnectionPool(sqlConfig);
+      await pool.connect();
+      await pool.query`DROP TABLE IF EXISTS "${tableName}"`;
+
+      let count = 0;
+
+      const readStream = fs.createReadStream(fileName);
+      const lineStream = readStream.pipe(split());
+
+      lineStream.on('data', async function (data) {
+        const values = data.split(seperator);
+
+        try {
+          count = count + 1;
+          table.rows.add(...values);
+          if (count % 10000 === 0) {
+            lineStream.pause();
+
+            const request = pool.request();
+            const results = await request.bulk(table);
+            table.rows.splice(0, table.rows.length);
+
+            lineStream.resume();
+            console.log(`rows affected ${results.rowsAffected}`);
+          }
+
+        } catch (error) {
+          console.log(error);
+        }
+      });
+
+      readStream.on('end', async function () {
+        // the last remaining batch
+        const request = pool.request();
+        const results = await request.bulk(table);
+        table.rows.splice(0, table.rows.length);
+        console.log(`rows affected ${results.rowsAffected}`);
+
+        resolve('data stored');
+      });
+
+    } catch (err) {
+      console.log(err);
+    }
+  });
 }
 
-// Below are examples of using ESLint errors suppression
-// Here it is suppressing a missing return type definition for the greeter function.
-
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export async function greeter(name: string) {
-  return await delayedHello(name, Delays.Long);
+async function getUserInputs(): Promise<UserInputProps> {
+  const schema = {
+    properties: {
+      fileName: {
+        required: true
+      },
+      tableName: {
+        required: true
+      },
+      seperator: {
+        required: false
+      },
+      firstLineColumns: {
+        required: false
+      }
+    }
+  };
+  prompt.start();
+  const result: UserInputProps =  await prompt.get(schema as any);
+  return result;
 }
+
+async function main() {
+  const userInputs = await getUserInputs();
+  await execute(userInputs);
+}
+
+main();
